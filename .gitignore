@@ -1,0 +1,36 @@
+# Secrets — never commit
+.env
+
+# Private deployment configs — only the example scenario is published.
+# Real scenarios (real hosts/mailboxes/domains) stay local.
+config/scenarios/*.yaml
+!config/scenarios/example.yaml
+
+# Private design docs / build briefs — keep local, out of the public repo.
+Docs/
+
+# Local data stores
+data/
+*.db
+kb/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store

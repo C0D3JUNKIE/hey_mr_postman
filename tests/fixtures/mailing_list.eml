@@ -1,0 +1,11 @@
+From: Newsletter <news@bulkmail.example>
+To: contact@siteB.com
+Subject: This week's deals just for you
+Message-ID: <bulk-0005@bulkmail.example>
+List-Id: Weekly Deals <deals.bulkmail.example>
+List-Unsubscribe: <mailto:unsub@bulkmail.example>
+Precedence: bulk
+Date: Thu, 19 Jun 2026 13:00:00 +0000
+Content-Type: text/plain; charset="utf-8"
+
+Check out this week's exclusive deals and save big!

@@ -1,0 +1,54 @@
+scenario: example
+
+transport:
+  type: imap_smtp
+  imap:
+    host: mail.example.com
+    port: 993
+    ssl: true
+    username: hub@example.com
+    password_env: HUB_IMAP_PASSWORD
+    inbox: INBOX
+    ingest_mode: poll          # poll | idle | pipe
+    poll_interval_seconds: 60
+    folders:
+      replied: Replied
+      awaiting: Awaiting-Approval
+      escalated: Escalated
+      no_action: No-Action
+      trash: Trash
+
+sending_identities:            # match incoming to_addr → which mailbox to auth as
+  - match_to: support@brand-a.example.com
+    host: mail.brand-a.example.com
+    port: 465
+    username: support@brand-a.example.com
+    password_env: BRAND_A_SUPPORT_PASSWORD
+  - match_to: contact@brand-b.example.com
+    host: mail.brand-b.example.com
+    port: 465
+    username: contact@brand-b.example.com
+    password_env: BRAND_B_CONTACT_PASSWORD
+
+brands:                        # brand key should appear in its sending domain
+  brand-a: { kb_path: kb/brand-a, voice: "friendly, concise, professional" }
+  brand-b: { kb_path: kb/brand-b, voice: "warm, plain-language" }
+
+autonomy:
+  mode: draft_only             # draft_only | approval | auto
+  auto_send_allowlist: [faq, acknowledgement]
+  confidence_threshold: 0.8
+  human_required_categories: [billing, legal, refund]
+
+retention:
+  trash_grace_days: 30
+  offload_attachments: true
+
+models:
+  triage: claude-haiku-4-5-20251001
+  draft: claude-sonnet-4-6
+
+storage:
+  db_path: data/agent.db
+  chroma_path: data/chroma
+  attachments_path: data/attachments

@@ -1,0 +1,21 @@
+From: Carol Client <carol@example.org>
+To: support@siteA.com
+Subject: Re: Order #4521
+Message-ID: <direct-0003@example.org>
+In-Reply-To: <order-4521@siteA.com>
+References: <order-4521@siteA.com>
+Date: Thu, 19 Jun 2026 11:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="BOUND"
+
+--BOUND
+Content-Type: text/plain; charset="utf-8"
+
+Thanks for the update on my order. When will it ship?
+
+--BOUND
+Content-Type: text/html; charset="utf-8"
+
+<html><body><p>Thanks for the update on my order. When will it ship?</p></body></html>
+
+--BOUND--
