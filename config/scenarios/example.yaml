@@ -44,6 +44,14 @@ retention:
   trash_grace_days: 30
   offload_attachments: true
 
+sla:                           # follow-up timer: nudge drafts left unactioned
+  enabled: true
+  follow_up_hours: 24          # queued > this long → SLA breach, flagged in digest
+
+digest:                        # activity summary (CLI: run_agent digest)
+  enabled: true
+  window_hours: 24
+
 models:
   triage: claude-haiku-4-5-20251001
   draft: claude-sonnet-4-6

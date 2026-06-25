@@ -89,6 +89,22 @@ class RetentionConfig(BaseModel):
     offload_attachments: bool = True
 
 
+class SLAConfig(BaseModel):
+    """Follow-up timer (§7.10): nudge if a queued draft sits unactioned too long."""
+
+    enabled: bool = True
+    # Hours a draft may wait in the approval queue before it breaches SLA.
+    follow_up_hours: float = 24.0
+
+
+class DigestConfig(BaseModel):
+    """Daily digest (§14 Phase 6): periodic activity summary for the operator."""
+
+    enabled: bool = True
+    # Lookback window the digest summarizes.
+    window_hours: float = 24.0
+
+
 class ModelsConfig(BaseModel):
     triage: str = "claude-haiku-4-5-20251001"
     draft: str = "claude-sonnet-4-6"
@@ -112,6 +128,8 @@ class ScenarioConfig(BaseModel):
     brands: dict[str, BrandConfig] = Field(default_factory=dict)
     autonomy: AutonomyConfig = Field(default_factory=AutonomyConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
+    sla: SLAConfig = Field(default_factory=SLAConfig)
+    digest: DigestConfig = Field(default_factory=DigestConfig)
     models: ModelsConfig = Field(default_factory=ModelsConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
 

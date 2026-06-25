@@ -36,14 +36,20 @@ core in the composition root (`scripts/run_agent.py`), selected by config.
 
 ## Build status (spec §14 phases)
 
-- ✅ **Phase 0–5 implemented and tested** (25 tests passing): scaffold, IMAP/SMTP
+- ✅ **Phase 0–5 implemented and tested** (32 tests passing): scaffold, IMAP/SMTP
   transport with forwarded-sender extraction, prefilter, Haiku classify,
   SQLite persistence + internal CRM, Chroma KB + Sonnet drafting, LangGraph
   route + approval queue, send-on-approval + finalize + audit.
-- ⏳ **Phase 6 (lifecycle) is seamed, not built**: `maintenance.py` has stubs for
-  `purge_contact` (GDPR fan-out — intentionally inert), `expunge_trash`
-  retention, attachment offload, quota warning. SLA follow-up timer / daily
-  digest not yet built.
+- 🟡 **Phase 6 (lifecycle) partially built**:
+  - ✅ **SLA follow-up timer + daily digest built & tested** (`maintenance.py`):
+    `run_sla_followups` nudges approvals past `sla.follow_up_hours` once each
+    (audit `sla_followup` + marks thread `overdue`/sets `sla_due`); `build_digest`
+    /`render_digest` summarize audit activity + queue state over `digest.window_hours`.
+    Surfaced as `run_agent sla` / `run_agent digest`; the sweep also runs each poll
+    iteration (v1's "background" timer — no separate scheduler). Config: `sla:` and
+    `digest:` blocks. Digest renders to stdout/log (email/Slack routing is a later seam).
+  - ⏳ **Still seamed, not built**: `purge_contact` (GDPR fan-out — intentionally
+    inert), `expunge_trash` retention, attachment offload, quota warning.
 
 ## Key design decisions (don't re-litigate)
 
@@ -92,6 +98,8 @@ python -m scripts.run_agent run             # poll loop
 python -m scripts.run_agent approvals       # list pending drafts
 python -m scripts.run_agent approve <id>    # send as brand identity
 python -m scripts.run_agent edit/discard/escalate <id>
+python -m scripts.run_agent sla             # nudge approvals past SLA (also runs in poll loop)
+python -m scripts.run_agent digest          # print activity + queue summary
 python -m scripts.ingest_kb --brand brand-a # load KB docs into Chroma
 python -m scripts.seed_test_emails          # APPEND fixtures to a TEST mailbox
 ```

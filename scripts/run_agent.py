@@ -35,6 +35,7 @@ from agent.config import ScenarioConfig, load_scenario
 from agent.core.models import ApprovalDecision, DecisionType
 from agent.core.pipeline import AgentPipeline
 from agent.llm import LLMClient
+from agent import maintenance
 from agent.store.db import Database
 from agent.store.repos import AuditLog, MessageRepo
 
@@ -95,9 +96,25 @@ class App:
         while True:
             try:
                 self.run_once()
+                self.run_sla_followups()
             except Exception:
                 log.exception("ingest pass failed; will retry")
             time.sleep(interval)
+
+    # ── follow-up / digest (Phase 6) ──
+
+    def run_sla_followups(self) -> int:
+        """v1 'background' SLA timer: nudge drafts that have waited too long."""
+        breaches = maintenance.run_sla_followups(
+            self.config, self.db, audit=self.audit
+        )
+        if breaches:
+            log.warning("%d approval(s) breached SLA this sweep", len(breaches))
+        return len(breaches)
+
+    def print_digest(self) -> None:
+        report = maintenance.build_digest(self.config, self.db)
+        print(maintenance.render_digest(report))
 
     # ── approvals ──
 
@@ -153,6 +170,8 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("run", help="poll loop (default)")
     sub.add_parser("once", help="single ingest pass")
     sub.add_parser("approvals", help="list pending approvals")
+    sub.add_parser("sla", help="run SLA follow-up sweep (nudge overdue drafts)")
+    sub.add_parser("digest", help="print the activity digest")
     for name in ("approve", "discard", "escalate"):
         p = sub.add_parser(name)
         p.add_argument("approval_id")
@@ -171,6 +190,11 @@ def main(argv: list[str] | None = None) -> None:
         app.run_once()
     elif cmd == "approvals":
         app.list_pending()
+    elif cmd == "sla":
+        n = app.run_sla_followups()
+        print(f"{n} approval(s) newly breached SLA")
+    elif cmd == "digest":
+        app.print_digest()
     elif cmd == "approve":
         app.resolve(args.approval_id, ApprovalDecision(decision=DecisionType.SEND))
     elif cmd == "edit":
