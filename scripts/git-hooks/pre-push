@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#
+# Hey Mr. Postman — pre-push safety guard.
+#
+# Last line of defence. Refuses to PUSH if (a) the destination is a GitHub
+# remote AND (b) any TRACKED file matches a secret/live-data pattern. The
+# deploy repo is meant to be local-only (no remote at all) — this catches the
+# case where someone later adds a GitHub remote by mistake.
+#
+# Bypass (only if you are 100% sure) with:  git push --no-verify
+#
+set -euo pipefail
+RED=$'\033[31m'; NC=$'\033[0m'
+
+remote_url="${2:-}"
+
+# Only guard pushes aimed at GitHub.
+case "$remote_url" in
+  *github.com*|*github:*) ;;
+  *) exit 0 ;;
+esac
+
+bad=$(git ls-files \
+  | grep -Ei '(^|/)\.env($|\.)|(^|/)data/|(^|/)kb/|(^|/)Docs/|\.db$|\.sqlite3?$|config/scenarios/.*\.yaml$' \
+  | grep -vE '\.env\.example$|config/scenarios/example\.yaml$' \
+  || true)
+
+if [ -n "$bad" ]; then
+  echo "${RED}BLOCKED push to GitHub${NC} — these TRACKED files look like secrets/live data:"
+  echo "$bad" | sed 's/^/    /'
+  echo
+  echo "Remove them from version control before pushing (git rm --cached <file>),"
+  echo "or push to a non-GitHub remote. Bypass: git push --no-verify"
+  exit 1
+fi
+
+exit 0

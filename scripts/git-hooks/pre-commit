@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+#
+# Hey Mr. Postman — pre-commit safety guard.
+#
+# Hard-fails the commit if anything that could leak secrets or live customer
+# data is staged. Belt-and-suspenders OVER .gitignore: catches `git add -f`,
+# a broken .gitignore, or a stray file in a deploy repo with different ignores.
+#
+# Install into any clone (main repo OR the local-only deploy repo) with:
+#     scripts/install-git-hooks.sh
+#
+# Bypass (only if you are 100% sure) with:  git commit --no-verify
+#
+set -euo pipefail
+
+RED=$'\033[31m'; YEL=$'\033[33m'; NC=$'\033[0m'
+fail=0
+
+# Files staged for this commit (added/copied/modified), NUL-safe.
+# (while-read loop instead of `mapfile` so this runs on bash 3.2, e.g. macOS.)
+staged=()
+while IFS= read -r -d '' f; do
+  staged+=("$f")
+done < <(git diff --cached --name-only -z --diff-filter=ACM)
+[ ${#staged[@]} -eq 0 ] && exit 0
+
+# ── 1. Blocked PATHS — these must never be committed anywhere ────────────────
+#    (mirrors .gitignore, but enforced even if a file was force-added)
+block_path() {
+  case "$1" in
+    .env|.env.*)                      [ "$1" = ".env.example" ] && return 1; return 0 ;;
+    data/*|*/data/*)                  return 0 ;;
+    kb/*|*/kb/*)                      return 0 ;;
+    Docs/*|*/Docs/*)                  return 0 ;;
+    *.db|*.sqlite|*.sqlite3)          return 0 ;;
+    config/scenarios/*.yaml)          [ "$1" = "config/scenarios/example.yaml" ] && return 1; return 0 ;;
+  esac
+  return 1
+}
+
+for f in "${staged[@]}"; do
+  if block_path "$f"; then
+    echo "${RED}BLOCKED${NC} staged path may contain secrets/live data: ${RED}$f${NC}"
+    fail=1
+  fi
+done
+
+# ── 2. Blocked CONTENT — scan staged diff for obvious secret material ────────
+#    Catches a real password/key pasted into an otherwise-allowed file.
+secret_hits=$(git diff --cached -U0 --no-color \
+  | grep -E '^\+' \
+  | grep -nEi \
+      -e 'sk-ant-[a-z0-9-]{20,}' \
+      -e '(api[_-]?key|secret|passwd|password|token)[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9/+_-]{16,}' \
+  || true)
+
+# Allow the *_env reference pattern (a var NAME, not a value) and empty assigns.
+secret_hits=$(echo "$secret_hits" \
+  | grep -vE 'password_env|_env[[:space:]]*:|=[[:space:]]*$|=[[:space:]]*["'"'"']?$' \
+  || true)
+
+if [ -n "$secret_hits" ]; then
+  echo "${RED}BLOCKED${NC} staged content looks like a real secret:"
+  echo "$secret_hits" | sed 's/^/    /'
+  fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo
+  echo "${YEL}Commit aborted by pre-commit guard.${NC}"
+  echo "Live data and secrets must stay in untracked local files (see TEST_PLAN.md §9)."
+  echo "If this is a false positive, re-run with: git commit --no-verify"
+  exit 1
+fi
+
+exit 0
