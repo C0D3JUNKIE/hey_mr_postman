@@ -66,7 +66,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
     detail_json TEXT
 );
 
+-- Attachment offload (§10): keep a reference (disk path / object key), not the
+-- blob. The blob lives in the object store; storage_ref points at it.
+CREATE TABLE IF NOT EXISTS attachments (
+    id           TEXT PRIMARY KEY,
+    message_id   TEXT REFERENCES messages(message_id),
+    filename     TEXT,
+    content_type TEXT,
+    size         INTEGER,
+    storage_ref  TEXT,           -- disk path in v1; S3 key later
+    created_at   TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_interactions_contact ON interactions(contact_id);
 CREATE INDEX IF NOT EXISTS idx_messages_message_id  ON messages(message_id);
 CREATE INDEX IF NOT EXISTS idx_approvals_status     ON approvals(status);
 CREATE INDEX IF NOT EXISTS idx_threads_contact      ON threads(contact_id);
+CREATE INDEX IF NOT EXISTS idx_attachments_message  ON attachments(message_id);

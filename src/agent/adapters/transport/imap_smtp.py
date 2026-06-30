@@ -20,12 +20,18 @@ import logging
 import re
 import smtplib
 import ssl
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from email.policy import default as default_policy
 from email.utils import getaddresses, parsedate_to_datetime
 
 from agent.config import ScenarioConfig, resolve_secret
 from agent.core.models import Attachment, Email, OutgoingEmail, RawMessage
+from agent.maintenance import offload_attachment
+
+# IMAP SEARCH wants a locale-independent "DD-Mon-YYYY" date; build it ourselves.
+_IMAP_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 log = logging.getLogger(__name__)
 
@@ -101,6 +107,23 @@ def _extract_attachments(msg: EmailMessage) -> list[Attachment]:
                 size=len(payload),
             )
         )
+    return out
+
+
+def extract_attachment_parts(raw_bytes: bytes) -> list[tuple[str, str, bytes]]:
+    """Pure: (filename, content_type, blob) per attachment, same order/filter as
+    ``_extract_attachments`` so the two zip together by index."""
+    msg: EmailMessage = email_lib.message_from_bytes(raw_bytes, policy=default_policy)
+    out: list[tuple[str, str, bytes]] = []
+    if not msg.is_multipart():
+        return out
+    for part in msg.walk():
+        disp = (part.get("Content-Disposition") or "").lower()
+        filename = part.get_filename()
+        if "attachment" not in disp and not filename:
+            continue
+        payload = part.get_payload(decode=True) or b""
+        out.append((filename or "attachment", part.get_content_type(), payload))
     return out
 
 
@@ -321,6 +344,47 @@ class ImapSmtpTransport:
         conn = self._connect_imap()
         conn.select(self.imap_cfg.inbox)
         conn.uid("STORE", msg_uid, "+FLAGS", "(\\Seen)")
+
+    # ── lifecycle: attachment offload + retention (§10) ──
+
+    def offload_attachments(self, email: Email, raw_bytes: bytes) -> None:
+        """Offload each attachment blob to the object store; set storage_ref (§10).
+
+        Disk I/O lives here in the adapter; the core only asks for it. Failures
+        are logged and skipped — a bad attachment must not drop the message.
+        """
+        parts = extract_attachment_parts(raw_bytes)
+        for att, (_fn, _ctype, blob) in zip(email.attachments, parts):
+            try:
+                att.storage_ref = offload_attachment(
+                    self.config, email.message_id, att.filename, blob
+                )
+            except Exception as e:
+                log.warning("attachment offload failed for %s: %s", att.filename, e)
+
+    def expunge_older_than(self, folder: str, days: int) -> int:
+        """Hard-delete messages in `folder` whose internal date precedes `days` ago.
+
+        Soft delete already moved them to Trash/; this is the retention sweep that
+        finally EXPUNGEs them (§10). Returns the number expunged.
+        """
+        conn = self._connect_imap()
+        typ, _ = conn.select(folder)
+        if typ != "OK":
+            return 0
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff = f"{cutoff_dt.day:02d}-{_IMAP_MONTHS[cutoff_dt.month - 1]}-{cutoff_dt.year}"
+        typ, data = conn.uid("SEARCH", None, "BEFORE", cutoff)
+        if typ != "OK":
+            return 0
+        uids = data[0].split() if data and data[0] else []
+        if not uids:
+            return 0
+        for uid in uids:
+            conn.uid("STORE", uid.decode(), "+FLAGS", "(\\Deleted)")
+        conn.expunge()
+        log.info("expunged %d message(s) from %s before %s", len(uids), folder, cutoff)
+        return len(uids)
 
     def mailbox_usage(self) -> tuple[int, int] | None:
         """(used_bytes, quota_bytes) via IMAP QUOTA, or None if unsupported (§10)."""

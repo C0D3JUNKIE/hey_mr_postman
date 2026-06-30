@@ -184,6 +184,17 @@ class AgentPipeline:
         self.messages.record_message(
             email, state["classification"], thread_id, self.config.transport.imap.inbox
         )
+        # Attachment offload (§10): offload blobs to the object store (adapter does
+        # the disk I/O) and persist references. Only here, post-prefilter, so junk
+        # attachments are never stored or cataloged.
+        if self.config.retention.offload_attachments and email.attachments:
+            offloader = getattr(self.transport, "offload_attachments", None)
+            if offloader is not None:
+                try:
+                    offloader(email, state["raw"].raw_bytes)
+                except Exception as e:
+                    log.warning("attachment offload failed for %s: %s", email.message_id, e)
+            self.messages.record_attachments(email.message_id, email.attachments)
         return {"enrichment": enrichment, "thread_id": thread_id}
 
     def _draft(self, state: PipelineState) -> dict:

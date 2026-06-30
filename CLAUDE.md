@@ -36,20 +36,29 @@ core in the composition root (`scripts/run_agent.py`), selected by config.
 
 ## Build status (spec §14 phases)
 
-- ✅ **Phase 0–5 implemented and tested** (32 tests passing): scaffold, IMAP/SMTP
+- ✅ **Phase 0–5 implemented and tested** (41 tests passing): scaffold, IMAP/SMTP
   transport with forwarded-sender extraction, prefilter, Haiku classify,
   SQLite persistence + internal CRM, Chroma KB + Sonnet drafting, LangGraph
   route + approval queue, send-on-approval + finalize + audit.
-- 🟡 **Phase 6 (lifecycle) partially built**:
-  - ✅ **SLA follow-up timer + daily digest built & tested** (`maintenance.py`):
+- ✅ **Phase 6 (lifecycle) complete** (one intentional seam remains):
+  - **SLA follow-up timer + daily digest** (`maintenance.py`):
     `run_sla_followups` nudges approvals past `sla.follow_up_hours` once each
     (audit `sla_followup` + marks thread `overdue`/sets `sla_due`); `build_digest`
     /`render_digest` summarize audit activity + queue state over `digest.window_hours`.
     Surfaced as `run_agent sla` / `run_agent digest`; the sweep also runs each poll
     iteration (v1's "background" timer — no separate scheduler). Config: `sla:` and
     `digest:` blocks. Digest renders to stdout/log (email/Slack routing is a later seam).
-  - ⏳ **Still seamed, not built**: `purge_contact` (GDPR fan-out — intentionally
-    inert), `expunge_trash` retention, attachment offload, quota warning.
+  - **Attachment offload**: transport offloads blobs to the object store
+    (`storage.attachments_path`) and the pipeline records refs in the new
+    `attachments` table — done in `_enrich`, so only post-prefilter mail is stored.
+    Gated by `retention.offload_attachments`.
+  - **Trash retention + quota warning**: `expunge_trash` hard-deletes Trash/ items
+    older than `retention.trash_grace_days` (transport `expunge_older_than`);
+    `warn_on_quota` logs when mailbox usage crosses the threshold. Both run in a
+    throttled daily housekeeping sweep on the poll loop and via `run_agent maintenance`.
+  - ⏳ **One intentional seam (spec §16, do not build in v1)**: `purge_contact`
+    (GDPR erasure fan-out) stays inert — destructive cross-store deletion is
+    one-way and must not ship half-built.
 
 ## Key design decisions (don't re-litigate)
 
@@ -91,7 +100,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env            # fill in secrets
 
-pytest -q                        # 25 tests
+pytest -q                        # 41 tests
 
 python -m scripts.run_agent once            # single ingest pass
 python -m scripts.run_agent run             # poll loop
@@ -100,6 +109,7 @@ python -m scripts.run_agent approve <id>    # send as brand identity
 python -m scripts.run_agent edit/discard/escalate <id>
 python -m scripts.run_agent sla             # nudge approvals past SLA (also runs in poll loop)
 python -m scripts.run_agent digest          # print activity + queue summary
+python -m scripts.run_agent maintenance     # expunge aged Trash + quota warn (also daily in poll loop)
 python -m scripts.ingest_kb --brand brand-a # load KB docs into Chroma
 python -m scripts.seed_test_emails          # APPEND fixtures to a TEST mailbox
 ```

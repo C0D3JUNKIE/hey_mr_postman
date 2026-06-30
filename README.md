@@ -85,6 +85,11 @@ python -m scripts.run_agent approve  <id>       # send as the brand identity
 python -m scripts.run_agent edit     <id> "..." # edit body, then send
 python -m scripts.run_agent discard  <id>
 python -m scripts.run_agent escalate <id>
+
+# lifecycle (also run automatically on the poll loop):
+python -m scripts.run_agent sla                 # nudge drafts past their SLA
+python -m scripts.run_agent digest              # activity + queue summary
+python -m scripts.run_agent maintenance         # expunge aged Trash + quota warn
 ```
 
 Ingest modes (config `transport.imap.ingest_mode`): `poll` (default), `idle`
@@ -135,11 +140,17 @@ threshold (`maintenance.warn_on_quota`).
 INBOX is a **queue, not an archive**. After handling, a message is moved out of
 INBOX into a status folder — `Replied/`, `Awaiting-Approval/`, `Escalated/`, or
 `No-Action/`. A message not in INBOX is never reprocessed. Soft delete flags
-`\Deleted` → `Trash/`; hard `EXPUNGE` only after `retention.trash_grace_days`.
+`\Deleted` → `Trash/`; hard `EXPUNGE` only after `retention.trash_grace_days`
+(`expunge_trash`, run on the daily housekeeping sweep / `run_agent maintenance`).
+
+Attachments are offloaded to the object store (`storage.attachments_path`) and
+only a reference is kept in the `attachments` table — never the blob inline
+(`retention.offload_attachments`). An S3 adapter can replace the disk store
+behind the same `offload_attachment` contract.
 
 GDPR erasure has a single seam — `maintenance.purge_contact(email)` — that will
-fan out to SQLite, Chroma, and the attachment store. It is a **stub** in v1
-(deletion is one-way; not shipped half-built).
+fan out to SQLite, Chroma, and the attachment store. It is intentionally a
+**stub** in v1 (deletion is one-way; not shipped half-built).
 
 ---
 

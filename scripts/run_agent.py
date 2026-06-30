@@ -43,6 +43,9 @@ log = logging.getLogger("mailagent")
 
 DEFAULT_SCENARIO = "config/scenarios/example.yaml"
 
+# How often the poll loop runs the retention/quota housekeeping sweep (daily).
+HOUSEKEEPING_INTERVAL_SECONDS = 24 * 60 * 60
+
 
 class App:
     """Holds the composed object graph."""
@@ -93,10 +96,16 @@ class App:
         log.info("starting poll loop (interval=%ss, mode=%s)", interval, mode)
         if self.config.kill_switch_engaged():
             log.warning("KILL_SWITCH engaged → forcing draft_only")
+        last_housekeeping: float | None = None
         while True:
             try:
                 self.run_once()
                 self.run_sla_followups()
+                # Retention/quota housekeeping is daily, not per-poll — throttle it.
+                now = time.monotonic()
+                if last_housekeeping is None or now - last_housekeeping >= HOUSEKEEPING_INTERVAL_SECONDS:
+                    self.run_housekeeping()
+                    last_housekeeping = now
             except Exception:
                 log.exception("ingest pass failed; will retry")
             time.sleep(interval)
@@ -115,6 +124,19 @@ class App:
     def print_digest(self) -> None:
         report = maintenance.build_digest(self.config, self.db)
         print(maintenance.render_digest(report))
+
+    def run_housekeeping(self) -> None:
+        """Daily lifecycle sweep (§10): expunge aged Trash + warn on quota."""
+        try:
+            n = maintenance.expunge_trash(self.config, self.transport)
+            if n:
+                log.info("housekeeping: expunged %d aged trashed message(s)", n)
+        except Exception:
+            log.exception("expunge_trash failed")
+        try:
+            maintenance.warn_on_quota(self.config, self.transport)
+        except Exception:
+            log.exception("warn_on_quota failed")
 
     # ── approvals ──
 
@@ -172,6 +194,7 @@ def main(argv: list[str] | None = None) -> None:
     sub.add_parser("approvals", help="list pending approvals")
     sub.add_parser("sla", help="run SLA follow-up sweep (nudge overdue drafts)")
     sub.add_parser("digest", help="print the activity digest")
+    sub.add_parser("maintenance", help="run retention/expunge + quota housekeeping")
     for name in ("approve", "discard", "escalate"):
         p = sub.add_parser(name)
         p.add_argument("approval_id")
@@ -195,6 +218,8 @@ def main(argv: list[str] | None = None) -> None:
         print(f"{n} approval(s) newly breached SLA")
     elif cmd == "digest":
         app.print_digest()
+    elif cmd == "maintenance":
+        app.run_housekeeping()
     elif cmd == "approve":
         app.resolve(args.approval_id, ApprovalDecision(decision=DecisionType.SEND))
     elif cmd == "edit":

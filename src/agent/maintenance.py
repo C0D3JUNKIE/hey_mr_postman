@@ -1,11 +1,13 @@
-"""Lifecycle & maintenance seams (§10).
+"""Lifecycle & maintenance (§10).
 
 Houses the cross-store operations that are not part of the per-message pipeline:
-attachment offload, trash retention/expunge, and the GDPR purge seam.
+attachment offload, trash retention/expunge, mailbox quota warning, the SLA
+follow-up timer + daily digest, and the GDPR purge seam.
 
-Per the spec, `purge_contact` is a SEAM in v1: the fan-out to all three stores
-(DB, Chroma, attachment store) is sketched but intentionally not fully wired —
-deletion across stores is a one-way operation and must not ship half-built.
+Of these, `purge_contact` remains a SEAM in v1 (spec §16): the destructive
+fan-out to all three stores (DB, Chroma, attachment store) is sketched but
+intentionally NOT wired — deletion across stores is one-way and must not ship
+half-built. Everything else in this module is implemented.
 """
 
 from __future__ import annotations
@@ -36,16 +38,22 @@ def offload_attachment(config: ScenarioConfig, message_id: str, filename: str, b
     return ref
 
 
-def expunge_trash(config: ScenarioConfig, transport) -> None:
+def expunge_trash(config: ScenarioConfig, transport) -> int:
     """Permanently remove Trash/ items past the retention grace period (§10).
 
     Soft delete moved them to Trash/ already; this is the hard delete. The IMAP
-    side (selecting Trash, EXPUNGE of \\Deleted older than grace_days) lives in
-    the transport adapter; this orchestrates it. Left minimal for v1.
+    side (select Trash, EXPUNGE of items older than grace_days) lives in the
+    transport adapter; this orchestrates it. Returns the number expunged.
     """
     grace = config.retention.trash_grace_days
-    log.info("expunge_trash: grace=%d days (transport-driven; no-op stub in v1)", grace)
-    # Intentionally a no-op stub: wire to transport.expunge_older_than(grace) in Phase 6.
+    trash = config.transport.imap.folders.trash
+    expunger = getattr(transport, "expunge_older_than", None)
+    if expunger is None:
+        log.info("expunge_trash: transport has no expunge_older_than; skipping")
+        return 0
+    n = expunger(trash, grace)
+    log.info("expunge_trash: %d message(s) expunged from %s (grace=%dd)", n, trash, grace)
+    return n
 
 
 def warn_on_quota(config: ScenarioConfig, transport, threshold: float = 0.9) -> bool:

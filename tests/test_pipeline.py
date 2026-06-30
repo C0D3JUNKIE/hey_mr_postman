@@ -40,6 +40,7 @@ class FakeTransport:
         self.sent = []
         self.moved = []
         self.marked = []
+        self.offloaded = []
         self._queue: list[RawMessage] = []
 
     def feed(self, raw: RawMessage):
@@ -63,6 +64,11 @@ class FakeTransport:
 
     def mark_processed(self, uid):
         self.marked.append(uid)
+
+    def offload_attachments(self, email, raw_bytes):
+        self.offloaded.append(email.message_id)
+        for att in email.attachments:
+            att.storage_ref = f"stub://{email.message_id}/{att.filename}"
 
 
 class FakeKnowledge:
@@ -183,3 +189,32 @@ def test_prefiltered_mail_no_action(harness):
     assert state["outcome"] == "no_action"
     assert harness["transport"].sent == []
     assert harness["notifier"].list_pending() == []
+
+
+def _eml_with_attachment() -> bytes:
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["From"] = "cust@example.com"
+    msg["To"] = "support@siteA.com"
+    msg["Subject"] = "Please see attached"
+    msg["Message-ID"] = "<att-pipe@x>"
+    msg.set_content("Here is the file.")
+    msg.add_attachment(b"%PDF fake", maintype="application", subtype="pdf", filename="report.pdf")
+    return msg.as_bytes()
+
+
+def test_attachments_offloaded_and_recorded(harness):
+    raw = RawMessage(uid="105", folder="INBOX", raw_bytes=_eml_with_attachment())
+    state = harness["pipeline"].process(raw)
+
+    # transport offload ran for real (post-prefilter) mail and set the ref
+    assert harness["transport"].offloaded == ["<att-pipe@x>"]
+    assert state["email"].attachments[0].storage_ref == "stub://<att-pipe@x>/report.pdf"
+    # reference persisted to the attachments table
+    rows = harness["db"].query_all(
+        "SELECT filename, storage_ref FROM attachments WHERE message_id = ?", ("<att-pipe@x>",)
+    )
+    assert len(rows) == 1
+    assert rows[0]["filename"] == "report.pdf"
+    assert rows[0]["storage_ref"] == "stub://<att-pipe@x>/report.pdf"

@@ -81,6 +81,24 @@ class MessageRepo:
             "UPDATE messages SET folder = ? WHERE message_id = ?", (folder, message_id)
         )
 
+    def record_attachments(self, message_id: str, attachments) -> None:
+        """Persist attachment references for a message (§10 — refs, not blobs).
+
+        Idempotent per message: clears any prior rows for this message_id first,
+        so a re-run records the current set without duplicating.
+        """
+        if not attachments:
+            return
+        self.db.execute("DELETE FROM attachments WHERE message_id = ?", (message_id,))
+        for att in attachments:
+            self.db.execute(
+                "INSERT INTO attachments "
+                "(id, message_id, filename, content_type, size, storage_ref, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (new_id(), message_id, att.filename, att.content_type,
+                 att.size, att.storage_ref, now_iso()),
+            )
+
 
 class AuditLog:
     """audit_log: every send/move/escalate writes a row (§13.6)."""
