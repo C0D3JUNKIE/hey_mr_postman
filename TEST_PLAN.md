@@ -58,7 +58,10 @@ Do **T0 fully** before T1.
 
 ## 2. Provision the VPS
 
-Assumes Ubuntu 22.04/24.04. Any VPS with Python 3.11+ works.
+Assumes Ubuntu 22.04/24.04. Any VPS with Python 3.11+ works. For IONOS-specific
+provisioning (Cloud Panel sizing/firewall, a read-only GitHub **deploy key** as
+the deployment identity, and the `scripts/update.sh` update flow), see
+[`DEPLOY_IONOS.md`](DEPLOY_IONOS.md).
 
 ```bash
 # as root, then create an unprivileged service user

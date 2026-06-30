@@ -105,6 +105,22 @@ python -m scripts.run_agent once
 
 ---
 
+## Deployment
+
+- **[`TEST_PLAN.md`](TEST_PLAN.md)** — staged test plan: provision a VPS, wire the
+  aggregation hub mailbox, run T0 (offline) → T1 (live shadow), graduation criteria.
+- **[`DEPLOY_IONOS.md`](DEPLOY_IONOS.md)** — IONOS-specific install: server sizing
+  & firewall, a read-only GitHub **deploy key** as the deployment identity, and a
+  one-command update flow.
+
+Pull a new release on the server with `scripts/update.sh` (fast-forward only,
+runs the test suite as a gate, then restarts the service). Keep real config and
+secrets in a **local-only** deploy repo with no remote — `scripts/bootstrap-deploy-repo.sh`
+sets it up, and `scripts/install-git-hooks.sh` installs commit/push guards that
+block secrets or live data from ever being committed.
+
+---
+
 ## Autonomy & safety
 
 - **`draft_only`** (default) → drafts everything, sends nothing.

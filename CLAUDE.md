@@ -112,6 +112,11 @@ python -m scripts.run_agent digest          # print activity + queue summary
 python -m scripts.run_agent maintenance     # expunge aged Trash + quota warn (also daily in poll loop)
 python -m scripts.ingest_kb --brand brand-a # load KB docs into Chroma
 python -m scripts.seed_test_emails          # APPEND fixtures to a TEST mailbox
+
+# deployment (see TEST_PLAN.md + DEPLOY_IONOS.md)
+scripts/bootstrap-deploy-repo.sh            # local-only (no-remote) repo for real config
+scripts/install-git-hooks.sh .              # commit/push guards: no secrets/live data
+scripts/update.sh                           # pull from GitHub (ff-only) + test gate + restart
 ```
 
 ## Environment notes
