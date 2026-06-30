@@ -75,15 +75,33 @@ ssh root@<server-ip>
 apt update && apt -y upgrade
 apt install -y python3 python3-venv python3-pip git
 adduser --disabled-password --gecos "" mailagent
-usermod -aG sudo mailagent          # only for the systemctl restart in update.sh
 # (optional) copy your SSH key to the mailagent user for direct login:
 rsync --archive --chown=mailagent:mailagent ~/.ssh /home/mailagent/
 ```
 
-Work as `mailagent` from here on:
+> **`mailagent` has NO password** — `--disabled-password` is deliberate for a
+> service account. So `su - mailagent` from a non-root shell (and any `sudo` run
+> *as* mailagent) will prompt for a password that doesn't exist. Don't set one
+> unless you want to; instead become the user with your own privileges:
+
+Work as `mailagent` from here on — from root or any sudoer, no password needed:
 
 ```bash
-su - mailagent
+sudo -iu mailagent        # drop into mailagent's shell using YOUR privileges
+# (only if you specifically want a password: `sudo passwd mailagent`)
+```
+
+`update.sh` runs `sudo systemctl restart mail-agent`, which a passwordless
+account can't answer interactively. Grant **scoped** passwordless sudo for just
+those service commands (safer than adding mailagent to the full `sudo` group):
+
+```bash
+# as root / a sudoer:
+SC=$(command -v systemctl)
+echo "mailagent ALL=(root) NOPASSWD: $SC restart mail-agent, $SC start mail-agent, $SC stop mail-agent" \
+  | sudo tee /etc/sudoers.d/mailagent
+sudo chmod 440 /etc/sudoers.d/mailagent
+sudo visudo -c            # validate
 ```
 
 ---
