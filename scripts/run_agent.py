@@ -181,28 +181,45 @@ def _setup_logging() -> None:
     )
 
 
-def main(argv: list[str] | None = None) -> None:
-    load_dotenv()
-    _setup_logging()
+def build_parser() -> argparse.ArgumentParser:
+    """CLI parser. `--scenario` is accepted BOTH before and after the subcommand.
 
+    The docs and the generated systemd unit (`run_agent run --scenario …`) put it
+    after the subcommand; plain argparse subparsers would reject that. We register
+    it on the top-level parser (with the real default) and, via a shared parent,
+    on every subparser with an argparse.SUPPRESS default so a value passed *before*
+    the subcommand is never clobbered by the subparser's absent default.
+    """
     parser = argparse.ArgumentParser(description="Hey Mr. Postman email agent")
     parser.add_argument("--scenario", default=DEFAULT_SCENARIO, help="scenario YAML path")
     sub = parser.add_subparsers(dest="cmd")
 
-    sub.add_parser("run", help="poll loop (default)")
-    sub.add_parser("once", help="single ingest pass")
-    sub.add_parser("approvals", help="list pending approvals")
-    sub.add_parser("sla", help="run SLA follow-up sweep (nudge overdue drafts)")
-    sub.add_parser("digest", help="print the activity digest")
-    sub.add_parser("maintenance", help="run retention/expunge + quota housekeeping")
+    after = argparse.ArgumentParser(add_help=False)
+    after.add_argument("--scenario", default=argparse.SUPPRESS, help="scenario YAML path")
+
+    for name, help_ in (
+        ("run", "poll loop (default)"),
+        ("once", "single ingest pass"),
+        ("approvals", "list pending approvals"),
+        ("sla", "run SLA follow-up sweep (nudge overdue drafts)"),
+        ("digest", "print the activity digest"),
+        ("maintenance", "run retention/expunge + quota housekeeping"),
+    ):
+        sub.add_parser(name, parents=[after], help=help_)
     for name in ("approve", "discard", "escalate"):
-        p = sub.add_parser(name)
+        p = sub.add_parser(name, parents=[after])
         p.add_argument("approval_id")
-    p_edit = sub.add_parser("edit")
+    p_edit = sub.add_parser("edit", parents=[after])
     p_edit.add_argument("approval_id")
     p_edit.add_argument("body")
+    return parser
 
-    args = parser.parse_args(argv)
+
+def main(argv: list[str] | None = None) -> None:
+    load_dotenv()
+    _setup_logging()
+
+    args = build_parser().parse_args(argv)
     config = load_scenario(args.scenario)
     app = App(config)
 
