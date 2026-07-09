@@ -22,8 +22,23 @@ class MessageRepo:
     def __init__(self, db: Database):
         self.db = db
 
-    def already_processed(self, message_id: str) -> bool:
-        """Idempotency check (§13.3): has this Message-ID been recorded?"""
+    def already_processed(self, message_id: str, provisional_folder: str) -> bool:
+        """Idempotency gate (§13.3). A Message-ID counts as processed only once it
+        has been *finalized* — i.e. moved out of the provisional inbox folder into
+        a terminal lane. A row still sitting in the provisional folder was recorded
+        in _enrich but never finalized (the pipeline failed mid-flight, e.g. at
+        draft), so it must be retried on the next pass, not dropped as a duplicate.
+        """
+        return self.db.query_one(
+            "SELECT 1 FROM messages "
+            "WHERE message_id = ? AND folder IS NOT NULL AND folder <> ?",
+            (message_id, provisional_folder),
+        ) is not None
+
+    def exists(self, message_id: str) -> bool:
+        """True if any row has been recorded for this Message-ID, in any state.
+        Used at finalize to choose insert-vs-update, independent of the gate above.
+        """
         return self.db.query_one(
             "SELECT 1 FROM messages WHERE message_id = ?", (message_id,)
         ) is not None

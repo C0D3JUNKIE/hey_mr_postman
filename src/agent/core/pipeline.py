@@ -144,8 +144,11 @@ class AgentPipeline:
         raw = state["raw"]
         email = self.transport.parse(raw)
         headers = getattr(self.transport, "raw_headers", lambda r: {})(raw)
-        # Idempotency (§13.3): already-recorded Message-ID → drop as duplicate.
-        if self.messages.already_processed(email.message_id):
+        # Idempotency (§13.3): a Message-ID already *finalized* → drop as duplicate.
+        # A row still in the inbox folder failed mid-pipeline and is retried.
+        if self.messages.already_processed(
+            email.message_id, self.config.transport.imap.inbox
+        ):
             return {
                 "email": email,
                 "headers": headers,
@@ -316,7 +319,7 @@ class AgentPipeline:
         contact = getattr(state.get("enrichment"), "contact", None)
         contact_id = contact.id if contact else None
         thread_id = state.get("thread_id")
-        if not self.messages.already_processed(email.message_id):
+        if not self.messages.exists(email.message_id):
             thread_id = self.messages.ensure_thread(email, contact_id)
             self.messages.record_message(
                 email, state.get("classification"), thread_id, folder

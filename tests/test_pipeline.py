@@ -95,6 +95,22 @@ class FakeLLM:
         return ""
 
 
+class FlakyDraftLLM(FakeLLM):
+    """Triage always works; the first draft call raises (simulating a transient
+    model error), later ones succeed."""
+
+    def __init__(self):
+        self.draft_calls = 0
+
+    def complete_json(self, model, system, user, **kw):
+        if "classifier" in system or "triage" in system:
+            return super().complete_json(model, system, user, **kw)
+        self.draft_calls += 1
+        if self.draft_calls == 1:
+            raise RuntimeError("draft model 400 (simulated)")
+        return super().complete_json(model, system, user, **kw)
+
+
 @pytest.fixture
 def app_config():
     return ScenarioConfig(
@@ -207,6 +223,37 @@ def test_approval_replies_from_original_recipient(tmp_path):
 
     pipeline.process_approval(approval, ApprovalDecision(decision=DecisionType.SEND, actor="alice"))
     assert transport.sent[0].from_identity == "support@siteA.com"  # NOT admin@siteA.com
+
+
+def test_failed_draft_is_retried_not_deduped(app_config, tmp_path):
+    """A message that fails mid-pipeline (e.g. a draft error) is recorded in
+    _enrich but never finalized, so the idempotency gate must NOT drop it as a
+    duplicate — it stays in the inbox folder and is retried on the next pass."""
+    db = Database(tmp_path / "agent.db")
+    transport = FakeTransport(app_config)
+    messages = MessageRepo(db)
+    llm = FlakyDraftLLM()
+    pipeline = AgentPipeline(
+        config=app_config, transport=transport, crm=InternalDbCRM(db), knowledge=FakeKnowledge(),
+        notifier=WebQueueNotifier(db), llm=llm, message_repo=messages, audit=AuditLog(db),
+    )
+    raw = RawMessage(uid="300", folder="INBOX", raw_bytes=load_eml("forwarded_replyto.eml"))
+    mid = transport.parse(raw).message_id
+    inbox = app_config.transport.imap.inbox
+
+    # First pass: draft raises → pipeline fails after _enrich recorded the row.
+    with pytest.raises(Exception):
+        pipeline.process(raw)
+    # Recorded but not finalized (still in inbox folder) → NOT a duplicate → retryable.
+    assert messages.exists(mid) is True
+    assert messages.already_processed(mid, inbox) is False
+
+    # Second pass: draft succeeds → completes and finalizes out of the inbox.
+    state = pipeline.process(raw)
+    assert state["outcome"] == "awaiting"
+    assert llm.draft_calls == 2  # proves it actually re-ran the draft
+    # Now finalized → deduped on subsequent passes.
+    assert messages.already_processed(mid, inbox) is True
 
 
 def test_idempotent_no_reprocess(harness):
