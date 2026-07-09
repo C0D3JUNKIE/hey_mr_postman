@@ -57,8 +57,11 @@ class LLMClient:
     ) -> dict:
         """Completion that must return a single JSON object. Parsed strictly (§7.4).
 
-        We prefill the assistant turn with ``{`` to force JSON and strip any
-        stray prose, then parse. Raises ValueError if the result isn't valid JSON.
+        The system prompt instructs the model to emit a single JSON object; we
+        trim any stray prose to the outermost ``{...}`` and parse. We do NOT
+        prefill the assistant turn — modern models (Sonnet 4.6+, Opus 4.6+,
+        Fable 5) reject a trailing assistant message with a 400. Raises
+        ValueError if the result isn't valid JSON.
         """
         resp = self._client.messages.create(
             model=model,
@@ -67,10 +70,9 @@ class LLMClient:
             system=system,
             messages=[
                 {"role": "user", "content": user},
-                {"role": "assistant", "content": "{"},
             ],
         )
-        text = "{" + "".join(
+        text = "".join(
             block.text for block in resp.content if getattr(block, "type", None) == "text"
         )
         try:
