@@ -36,6 +36,26 @@ def test_mailer_daemon_dropped():
     assert res.drop is True
 
 
+def test_cpanel_system_sender_dropped():
+    # cPanel account / mail-client-config notifications must not get a drafted reply.
+    res = prefilter(_email(
+        from_addr="cpanel@oneeleven.cloud",
+        true_sender="cpanel@oneeleven.cloud",
+        subject="[oneeleven.cloud] Client configuration settings for hub@oneeleven.cloud",
+    ))
+    assert res.drop is True
+
+
+def test_forwarded_form_from_system_mailer_not_dropped():
+    # Forwarded contact-form mail: From is the site's own system mailer, but the
+    # real customer was recovered into true_sender — must NOT be dropped (§6).
+    res = prefilter(_email(
+        from_addr="wordpress@siteA.com",       # matches an automated pattern
+        true_sender="jane.customer@gmail.com",  # but the real customer differs
+    ))
+    assert res.drop is False
+
+
 def test_empty_body_dropped():
     assert prefilter(_email(body_text="", body_html=None)).drop is True
 

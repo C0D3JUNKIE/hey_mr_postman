@@ -25,6 +25,12 @@ _NOREPLY_PATTERNS = (
     "bounce",
     "notifications",
     "automated",
+    # Hosting / CMS system senders — cPanel account + mail-client-config
+    # notifications, web-server and WordPress form mailers. Distinctive
+    # local-parts, so low false-positive risk even as a substring match.
+    "cpanel",
+    "www-data",
+    "wordpress",
 )
 
 # Headers that mark bulk / automated / vacation mail. Presence ⇒ drop.
@@ -73,8 +79,15 @@ def prefilter(email: Email, *, extra_headers: dict[str, str] | None = None) -> P
     """
     headers = {k.lower(): (v or "") for k, v in (extra_headers or {}).items()}
 
-    # 1) Never reply to no-reply / daemon / our own forwarders.
-    if _addr_is_noreply(email.true_sender) or _addr_is_noreply(email.from_addr):
+    # 1) Never reply to no-reply / daemon / automated senders. Judge by the REAL
+    #    customer (true_sender). Only fall back to the From header when we did NOT
+    #    recover a distinct true_sender — otherwise forwarded contact-form mail
+    #    (From is the site's own system mailer, e.g. wordpress@/www-data@; the
+    #    real customer is in Reply-To / the body) would be wrongly dropped (§6).
+    if _addr_is_noreply(email.true_sender):
+        return PrefilterResult(True, "no-reply / automated sender")
+    recovered = (email.true_sender or "").strip().lower() != (email.from_addr or "").strip().lower()
+    if not recovered and _addr_is_noreply(email.from_addr):
         return PrefilterResult(True, "no-reply / automated sender")
 
     # 2) Auto-submitted: explicit "no" is fine (human); anything else is automated.
