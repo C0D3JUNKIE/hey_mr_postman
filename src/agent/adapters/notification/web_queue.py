@@ -36,6 +36,7 @@ class WebQueueNotifier:
         context["_meta"] = {
             "brand": draft.brand,
             "to_addr": draft.to_addr,
+            "reply_from": draft.reply_from,
             "subject": draft.subject,
             "confidence": draft.draft.confidence,
             "classification": draft.classification.model_dump(mode="json")
@@ -94,6 +95,7 @@ def _row_to_pending(row) -> PendingApproval:
         message_id=row["message_id"],
         brand=meta.get("brand"),
         to_addr=meta.get("to_addr", ""),
+        reply_from=meta.get("reply_from"),
         subject=meta.get("subject", ""),
         draft=Draft(body_text=row["draft_body"] or "", confidence=meta.get("confidence", 0.0)),
         classification=classification,

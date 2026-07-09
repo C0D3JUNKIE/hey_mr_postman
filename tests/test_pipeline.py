@@ -171,6 +171,44 @@ def test_approval_sends_from_brand_identity(harness):
     assert len(rows) == 1
 
 
+def test_approval_replies_from_original_recipient(tmp_path):
+    """Regression: with several identities per brand, the reply must go out AS the
+    address the customer wrote to (support@), not the brand's first-listed
+    identity (admin@) — otherwise continued replies land on an unmonitored box."""
+    config = ScenarioConfig(
+        scenario="test",
+        transport=TransportConfig(
+            type="imap_smtp",
+            imap=ImapConfig(host="mail.test", username="hub@test", password_env="HUB_IMAP_PASSWORD"),
+        ),
+        sending_identities=[
+            # admin@ deliberately listed FIRST — the old code always picked this.
+            SendingIdentity(match_to="admin@siteA.com", host="mail.siteA.com",
+                            username="admin@siteA.com", password_env="SITEA_ADMIN_PASSWORD"),
+            SendingIdentity(match_to="support@siteA.com", host="mail.siteA.com",
+                            username="support@siteA.com", password_env="SITEA_SUPPORT_PASSWORD"),
+        ],
+        brands={"siteA": BrandConfig(kb_path="kb/siteA", voice="friendly")},
+        autonomy=AutonomyConfig(mode="draft_only"),
+        storage=StorageConfig(db_path=str(tmp_path / "agent.db")),
+    )
+    db = Database(tmp_path / "agent.db")
+    transport = FakeTransport(config)
+    notifier = WebQueueNotifier(db)
+    pipeline = AgentPipeline(
+        config=config, transport=transport, crm=InternalDbCRM(db), knowledge=FakeKnowledge(),
+        notifier=notifier, llm=FakeLLM(), message_repo=MessageRepo(db), audit=AuditLog(db),
+    )
+
+    # forwarded_replyto.eml was addressed To: support@siteA.com
+    pipeline.process(RawMessage(uid="200", folder="INBOX", raw_bytes=load_eml("forwarded_replyto.eml")))
+    approval = notifier.list_pending()[0]
+    assert approval.reply_from == "support@siteA.com"
+
+    pipeline.process_approval(approval, ApprovalDecision(decision=DecisionType.SEND, actor="alice"))
+    assert transport.sent[0].from_identity == "support@siteA.com"  # NOT admin@siteA.com
+
+
 def test_idempotent_no_reprocess(harness):
     raw = RawMessage(uid="102", folder="INBOX", raw_bytes=load_eml("forwarded_replyto.eml"))
     harness["pipeline"].process(raw)

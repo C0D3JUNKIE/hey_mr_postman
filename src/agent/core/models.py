@@ -171,6 +171,10 @@ class PendingApproval(BaseModel):
     message_id: str
     brand: str | None = None
     to_addr: str
+    # The address the customer originally wrote to (e.g. support@brand.com).
+    # We reply *as* this identity so continued replies route back through the
+    # same monitored mailbox (§9) — not the brand's first-listed identity.
+    reply_from: str | None = None
     subject: str
     draft: Draft
     classification: Classification | None = None

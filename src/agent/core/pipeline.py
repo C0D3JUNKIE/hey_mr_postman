@@ -248,6 +248,7 @@ class AgentPipeline:
             message_id=email.message_id,
             brand=email.brand,
             to_addr=email.true_sender,
+            reply_from=email.to_addr,  # reply AS the address the customer wrote to (§9)
             subject=_reply_subject(email.subject),
             draft=state["draft"],
             classification=state["classification"],
@@ -275,6 +276,7 @@ class AgentPipeline:
             message_id=email.message_id,
             brand=email.brand,
             to_addr=email.true_sender,
+            reply_from=email.to_addr,  # reply AS the address the customer wrote to (§9)
             subject=_reply_subject(email.subject),
             draft=state["draft"],
             classification=state["classification"],
@@ -378,8 +380,15 @@ class AgentPipeline:
 
         # send or edit → actually send.
         body = decision.edited_body or approval.draft.body_text
+        # Reply AS the address the customer originally wrote to, so continued
+        # replies route back through the same monitored mailbox (§9). Fall back to
+        # the brand's identity only when that recipient isn't a configured identity
+        # (e.g. legacy approvals queued before reply_from was persisted).
+        reply_from = approval.reply_from
+        if not reply_from or self.config.identity_for(reply_from) is None:
+            reply_from = _brand_to_addr(self.config, approval.brand)
         outgoing = OutgoingEmail(
-            from_identity=_brand_to_addr(self.config, approval.brand) or "",
+            from_identity=reply_from or "",
             to_addr=approval.to_addr,
             subject=approval.subject,
             body_text=body,
