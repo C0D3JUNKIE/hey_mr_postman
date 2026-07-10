@@ -77,6 +77,12 @@ core in the composition root (`scripts/run_agent.py`), selected by config.
   config instead. **(Open item to confirm before real deployment.)**
 - **Models are config values** (`models.triage` Haiku / `models.draft` Sonnet),
   never hardcoded.
+- **Two human-required gates in `route.decide_route`.** *Category*-based
+  (`autonomy.human_required_categories`: billing/legal/refund) escalates by what
+  the mail is *about*. *Identity*-based (`autonomy.human_required_identities`,
+  matched against `email.to_addr`, e.g. `legal@`) escalates by which higher-stakes
+  account was written *to* — it fires first and overrides auto-send regardless of
+  category/confidence, because misclassification shouldn't let a legal message slip.
 
 ## Public-repo / privacy setup
 
@@ -110,7 +116,11 @@ python -m scripts.run_agent edit/discard/escalate <id>
 python -m scripts.run_agent sla             # nudge approvals past SLA (also runs in poll loop)
 python -m scripts.run_agent digest          # print activity + queue summary
 python -m scripts.run_agent maintenance     # expunge aged Trash + quota warn (also daily in poll loop)
-python -m scripts.ingest_kb --brand brand-a # load KB docs into Chroma
+# KB refresh (scrape → review → ingest). Sources declared per brand (brands.<b>.sources).
+python -m scripts.scrape_site --brand brand-a --prune   # fetch config sources → kb/<brand>/;
+                                            # reports new/CHANGED pages, prunes vanished ones
+python -m scripts.ingest_kb --brand brand-a --replace   # authoritative rebuild (no stale chunks)
+#   ad-hoc (no config): scrape_site --brand brand-a --auth-user U --auth-pass-env PW_ENV --crawl <url>
 python -m scripts.seed_test_emails          # APPEND fixtures to a TEST mailbox
 
 # deployment (see TEST_PLAN.md + DEPLOY_IONOS.md)

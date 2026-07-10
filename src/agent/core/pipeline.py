@@ -220,6 +220,7 @@ class AgentPipeline:
             state["draft"],
             self.config.autonomy,
             effective_mode=self.config.effective_mode(),
+            to_addr=state["email"].to_addr,
         )
         log.info(
             "route msg=%s action=%s reason=%s",

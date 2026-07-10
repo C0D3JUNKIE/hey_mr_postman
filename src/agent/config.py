@@ -63,9 +63,24 @@ class SendingIdentity(BaseModel):
 # ─────────────────────────── brand / autonomy ────────────────────────────
 
 
+class KBSource(BaseModel):
+    """A web source to scrape into a brand's KB (used by scripts/scrape_site).
+
+    Declared per brand so a refresh is `scrape_site --brand X` with no URLs —
+    the sources (and their auth/crawl settings) come from config.
+    """
+
+    url: str
+    crawl: bool = False
+    max_pages: int = 50
+    auth_user: str | None = None
+    auth_pass_env: str | None = None  # env var name holding the basic-auth password
+
+
 class BrandConfig(BaseModel):
     kb_path: str
     voice: str = ""
+    sources: list[KBSource] = Field(default_factory=list)
 
 
 class AutonomyConfig(BaseModel):
@@ -75,6 +90,10 @@ class AutonomyConfig(BaseModel):
     human_required_categories: list[str] = Field(
         default_factory=lambda: ["billing", "legal", "refund"]
     )
+    # Recipient addresses (the account the customer wrote *to*, e.g.
+    # legal@brand.com) that always require a human, regardless of category or
+    # confidence — higher-stakes identities than routine customer service.
+    human_required_identities: list[str] = Field(default_factory=list)
 
     @field_validator("mode")
     @classmethod
