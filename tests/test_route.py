@@ -77,3 +77,33 @@ def test_non_allowlisted_category_needs_approval(autonomy):
 def test_needs_human_flag_escalates(autonomy):
     res = decide_route(_cls(needs_human=True), _draft(), autonomy, effective_mode="auto")
     assert res.action == RouteAction.ESCALATE
+
+
+def test_human_required_identity_escalates_even_when_auto_sendable(autonomy):
+    """A high-stakes account (legal@) must escalate even for an allowlisted,
+    high-confidence category that would otherwise auto-send."""
+    autonomy.human_required_identities = ["legal@brand.com"]
+    res = decide_route(
+        _cls(category=Category.FAQ, confidence=0.99), _draft(), autonomy,
+        effective_mode="auto", to_addr="Legal@Brand.com",  # case-insensitive
+    )
+    assert res.action == RouteAction.ESCALATE
+    assert "identity" in res.reason
+
+
+def test_non_gated_identity_still_auto_sends(autonomy):
+    autonomy.human_required_identities = ["legal@brand.com"]
+    res = decide_route(
+        _cls(category=Category.FAQ, confidence=0.95), _draft(), autonomy,
+        effective_mode="auto", to_addr="support@brand.com",
+    )
+    assert res.action == RouteAction.AUTO_SEND
+
+
+def test_identity_gate_absent_by_default(autonomy):
+    """No configured identities → to_addr has no effect (back-compat)."""
+    res = decide_route(
+        _cls(category=Category.FAQ, confidence=0.95), _draft(), autonomy,
+        effective_mode="auto", to_addr="legal@brand.com",
+    )
+    assert res.action == RouteAction.AUTO_SEND

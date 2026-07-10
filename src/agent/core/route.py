@@ -5,7 +5,8 @@ I/O. The pipeline turns the RouteAction into an interrupt or a send.
 
 Decision table:
 - Kill switch / draft_only mode → never auto-send; everything queues for approval.
-- Always escalate: negative sentiment, low confidence, or human-required category.
+- Always escalate: human-required identity (the account written to, e.g. legal@),
+  negative sentiment, low confidence, or human-required category.
 - Auto-send only if: mode == auto AND category in allowlist AND confidence >=
   threshold AND category not human-required AND not needs_human.
 - Otherwise → approval.
@@ -31,16 +32,23 @@ def decide_route(
     autonomy: AutonomyConfig,
     *,
     effective_mode: str,
+    to_addr: str | None = None,
 ) -> RouteResult:
     """Compute the routing decision. `effective_mode` already accounts for the
-    kill switch (see ScenarioConfig.effective_mode)."""
+    kill switch (see ScenarioConfig.effective_mode). `to_addr` is the account the
+    customer wrote to (support@ vs legal@), used for the identity gate."""
 
     human_required = {c.lower() for c in autonomy.human_required_categories}
+    required_identities = {a.strip().lower() for a in autonomy.human_required_identities}
     allowlist = {c.lower() for c in autonomy.auto_send_allowlist}
     cat = classification.category.value
     conf = classification.confidence
 
     # ── always-escalate conditions (§8) ──
+    # Identity gate first: some accounts (e.g. legal@) are higher-stakes than
+    # routine customer service and must never auto-send, whatever the category.
+    if to_addr and to_addr.strip().lower() in required_identities:
+        return RouteResult(RouteAction.ESCALATE, f"human-required identity: {to_addr}")
     if classification.sentiment == Sentiment.NEGATIVE:
         return RouteResult(RouteAction.ESCALATE, "negative sentiment")
     if cat in human_required or classification.category in (

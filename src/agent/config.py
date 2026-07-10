@@ -90,6 +90,10 @@ class AutonomyConfig(BaseModel):
     human_required_categories: list[str] = Field(
         default_factory=lambda: ["billing", "legal", "refund"]
     )
+    # Recipient addresses (the account the customer wrote *to*, e.g.
+    # legal@brand.com) that always require a human, regardless of category or
+    # confidence — higher-stakes identities than routine customer service.
+    human_required_identities: list[str] = Field(default_factory=list)
 
     @field_validator("mode")
     @classmethod

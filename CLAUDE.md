@@ -77,6 +77,12 @@ core in the composition root (`scripts/run_agent.py`), selected by config.
   config instead. **(Open item to confirm before real deployment.)**
 - **Models are config values** (`models.triage` Haiku / `models.draft` Sonnet),
   never hardcoded.
+- **Two human-required gates in `route.decide_route`.** *Category*-based
+  (`autonomy.human_required_categories`: billing/legal/refund) escalates by what
+  the mail is *about*. *Identity*-based (`autonomy.human_required_identities`,
+  matched against `email.to_addr`, e.g. `legal@`) escalates by which higher-stakes
+  account was written *to* — it fires first and overrides auto-send regardless of
+  category/confidence, because misclassification shouldn't let a legal message slip.
 
 ## Public-repo / privacy setup
 
