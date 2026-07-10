@@ -110,7 +110,11 @@ python -m scripts.run_agent edit/discard/escalate <id>
 python -m scripts.run_agent sla             # nudge approvals past SLA (also runs in poll loop)
 python -m scripts.run_agent digest          # print activity + queue summary
 python -m scripts.run_agent maintenance     # expunge aged Trash + quota warn (also daily in poll loop)
-python -m scripts.ingest_kb --brand brand-a # load KB docs into Chroma
+# KB refresh (scrape → review → ingest). Sources declared per brand (brands.<b>.sources).
+python -m scripts.scrape_site --brand brand-a --prune   # fetch config sources → kb/<brand>/;
+                                            # reports new/CHANGED pages, prunes vanished ones
+python -m scripts.ingest_kb --brand brand-a --replace   # authoritative rebuild (no stale chunks)
+#   ad-hoc (no config): scrape_site --brand brand-a --auth-user U --auth-pass-env PW_ENV --crawl <url>
 python -m scripts.seed_test_emails          # APPEND fixtures to a TEST mailbox
 
 # deployment (see TEST_PLAN.md + DEPLOY_IONOS.md)

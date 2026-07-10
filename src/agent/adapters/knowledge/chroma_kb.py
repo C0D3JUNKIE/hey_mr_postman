@@ -64,6 +64,18 @@ class ChromaKnowledge:
 
     # ── ingestion (used by scripts/ingest, not part of the port) ──
 
+    def reset(self, brand: str) -> None:
+        """Drop all vectors for a brand.
+
+        Used before an authoritative re-ingest so removed/renamed pages and
+        shrunk documents can't leave orphaned chunks behind (upsert never
+        deletes). Idempotent — a missing collection is fine.
+        """
+        try:
+            self.client.delete_collection(name=_collection_name(brand))
+        except Exception:  # chroma raises if it doesn't exist; nothing to drop
+            pass
+
     def ingest(self, brand: str, texts: list[str], sources: list[str], ids: list[str]) -> int:
         if not texts:
             return 0

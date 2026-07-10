@@ -43,6 +43,12 @@ def main(argv=None):
     parser.add_argument("--brand", required=True)
     parser.add_argument("--path", default=None, help="override brand kb_path")
     parser.add_argument("--glob", default="**/*", help="file glob within the path")
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="drop the brand's existing vectors first (authoritative rebuild — "
+        "prevents stale chunks from removed/shrunk docs)",
+    )
     args = parser.parse_args(argv)
 
     config = load_scenario(args.scenario)
@@ -55,6 +61,8 @@ def main(argv=None):
         parser.error(f"kb path does not exist: {kb_dir}")
 
     kb = ChromaKnowledge(config.storage.chroma_path)
+    if args.replace:
+        kb.reset(args.brand)
     texts, sources, ids = [], [], []
     for f in sorted(kb_dir.glob(args.glob)):
         if not f.is_file() or f.suffix.lower() not in {".txt", ".md", ".markdown"}:
